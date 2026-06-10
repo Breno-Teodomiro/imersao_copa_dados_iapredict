@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import pickle
 
 import numpy as np
 import pandas as pd
@@ -147,10 +146,8 @@ class PreditorLGBM(Preditor):
         return np.asarray(self.mc.predict(X)), np.asarray(self.mv.predict(X))
 
     def salvar(self, models_dir):
-        with open(os.path.join(models_dir, "modelo_lgbm_casa.pkl"), "wb") as f:
-            pickle.dump(self.mc, f)
-        with open(os.path.join(models_dir, "modelo_lgbm_visitante.pkl"), "wb") as f:
-            pickle.dump(self.mv, f)
+        self.mc.save_model(os.path.join(models_dir, "modelo_lgbm_casa.txt"))
+        self.mv.save_model(os.path.join(models_dir, "modelo_lgbm_visitante.txt"))
         return {"familia": self.nome, "rho": None}
 
 
@@ -171,17 +168,17 @@ def treinar_dixon_coles(treino: pd.DataFrame) -> PreditorDixonColes:
 
 
 def treinar_lgbm(treino: pd.DataFrame) -> PreditorLGBM:
-    from lightgbm import LGBMRegressor
+    import lightgbm as lgb  # API nativa (Booster) — não exige scikit-learn
 
     X = _X_lgbm(treino)
-    w = _peso_amostra(treino)
-    params = dict(
-        objective="poisson", n_estimators=400, learning_rate=0.05,
-        num_leaves=31, min_child_samples=50, subsample=0.8, colsample_bytree=0.8,
-        random_state=42, n_jobs=-1, verbose=-1,
-    )
-    mc = LGBMRegressor(**params).fit(X, treino["gols_casa"], sample_weight=w)
-    mv = LGBMRegressor(**params).fit(X, treino["gols_visitante"], sample_weight=w)
+    w = _peso_amostra(treino).to_numpy()
+    params = {
+        "objective": "poisson", "learning_rate": 0.05, "num_leaves": 31,
+        "min_child_samples": 50, "bagging_fraction": 0.8, "bagging_freq": 1,
+        "feature_fraction": 0.8, "seed": 42, "num_threads": 0, "verbose": -1,
+    }
+    mc = lgb.train(params, lgb.Dataset(X, label=treino["gols_casa"], weight=w), num_boost_round=400)
+    mv = lgb.train(params, lgb.Dataset(X, label=treino["gols_visitante"], weight=w), num_boost_round=400)
     return PreditorLGBM(mc, mv)
 
 
@@ -209,10 +206,10 @@ def carregar_campeao(models_dir: str) -> Preditor:
         return PreditorDixonColes(mc, mv, meta["rho"])
 
     if familia == "lgbm":
-        with open(os.path.join(models_dir, "modelo_lgbm_casa.pkl"), "rb") as f:
-            mc = pickle.load(f)
-        with open(os.path.join(models_dir, "modelo_lgbm_visitante.pkl"), "rb") as f:
-            mv = pickle.load(f)
+        import lightgbm as lgb
+
+        mc = lgb.Booster(model_file=os.path.join(models_dir, "modelo_lgbm_casa.txt"))
+        mv = lgb.Booster(model_file=os.path.join(models_dir, "modelo_lgbm_visitante.txt"))
         return PreditorLGBM(mc, mv)
 
     raise ValueError(f"família de modelo desconhecida em campeao.json: {familia!r}")
