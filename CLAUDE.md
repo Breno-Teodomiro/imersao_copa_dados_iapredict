@@ -33,10 +33,15 @@ python src/previsao.py      # 07 — previsões dos 72 jogos + experimentos de r
 python src/monte_carlo.py   # 08 — simulação de Monte Carlo (N=10.000)
 
 streamlit run app.py        # 09 — dashboard (4 páginas)
+
+pytest -q                   # testes da competição de modelos (offline, sem banco)
 ```
 
-Não há suíte de testes nem linter configurado. A validação de cada etapa é a **Verificação (SQL)**
-no `.llm/feature_NN.md` correspondente, mais o relatório que cada script imprime.
+Os testes (`tests/`, com `conftest.py` na raiz) cobrem a matemática de placar (Poisson,
+Dixon-Coles, métricas) e a competição de modelos sobre um `gold_atributos` sintético — **não
+exigem o banco**. A validação de cada etapa do pipeline é a **Verificação (SQL)** no
+`.llm/feature_NN.md` correspondente, mais o relatório que cada script imprime. Não há linter
+configurado.
 
 **Convenção de imports:** os módulos de `src/` usam imports "flat" (`from db import ...`,
 `import poisson`) e são executados a partir da raiz (`python src/bronze.py`). O `app.py` replica

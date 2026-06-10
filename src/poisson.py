@@ -45,10 +45,15 @@ def matriz_dixon_coles(
 
 
 def probabilidades_da_matriz(m: np.ndarray) -> tuple[float, float, float]:
-    """Deriva (P(vitória casa), P(empate), P(vitória visitante)) de uma matriz de placares."""
-    p_vit = np.tril(m, -1).sum()   # gols_casa > gols_visit
-    p_emp = np.trace(m)            # diagonal: gols_casa == gols_visit
-    p_der = np.triu(m, 1).sum()    # gols_casa < gols_visit
+    """Deriva (P(vitória casa), P(empate), P(vitória visitante)) de uma matriz de placares.
+
+    Normaliza pela massa total da matriz: como o placar é truncado em ``MAX_GOLS``, isso
+    condiciona o resultado a "ambos marcam ≤ MAX_GOLS" e garante soma exatamente 1.
+    """
+    total = m.sum()
+    p_vit = np.tril(m, -1).sum() / total   # gols_casa > gols_visit
+    p_emp = np.trace(m) / total            # diagonal: gols_casa == gols_visit
+    p_der = np.triu(m, 1).sum() / total    # gols_casa < gols_visit
     return float(p_vit), float(p_emp), float(p_der)
 
 
