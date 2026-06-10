@@ -101,15 +101,16 @@ def persistir_banco(comp: pd.DataFrame, campeao: str) -> None:
                 cur.execute(
                     "INSERT INTO comparacao_modelos (modelo, mae_casa, mae_visitante, log_loss, "
                     "brier, acuracia, eh_campeao) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (r["modelo"], r["mae_casa"], r["mae_visitante"], r["log_loss"],
-                     r["brier"], r["acuracia"], bool(r["modelo"] == campeao)),
+                    (str(r["modelo"]), float(r["mae_casa"]), float(r["mae_visitante"]),
+                     float(r["log_loss"]), float(r["brier"]), float(r["acuracia"]),
+                     bool(r["modelo"] == campeao)),
                 )
             c = comp[comp["modelo"] == campeao].iloc[0]
             cur.execute(
                 "INSERT INTO metricas_validacao (modelo, mae_casa, mae_visitante, log_loss, "
                 "brier, acuracia) VALUES (%s, %s, %s, %s, %s, %s)",
-                (c["modelo"], c["mae_casa"], c["mae_visitante"], c["log_loss"],
-                 c["brier"], c["acuracia"]),
+                (str(c["modelo"]), float(c["mae_casa"]), float(c["mae_visitante"]),
+                 float(c["log_loss"]), float(c["brier"]), float(c["acuracia"])),
             )
         conn.commit()
     finally:
