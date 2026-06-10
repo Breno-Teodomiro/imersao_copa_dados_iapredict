@@ -1,0 +1,43 @@
+# Tema premium do IAPredict — Copa 2026.
+# Paleta: navy profundo (gramado à noite) + esmeralda (primária) + ouro (taça).
+[theme]
+base = "dark"
+primaryColor = "#16A34A"              # esmeralda — botões/elementos ativos (texto branco legível)
+backgroundColor = "#0A0F1F"           # navy profundo
+secondaryBackgroundColor = "#131B2E"  # cartões/widgets
+textColor = "#E7ECF6"
+linkColor = "#F2C14E"                  # ouro
+borderColor = "#25304A"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "12px"
+buttonRadius = "12px"
+linkUnderline = false
+
+# Tipografia premium (Google Fonts)
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+headingFont = "Sora:https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&display=swap"
+baseFontSize = 15
+headingFontSizes = ["34px", "24px", "19px", "16px", "14px", "12px"]
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+
+# Paleta semântica
+greenColor = "#22C55E"
+yellowColor = "#F2C14E"
+orangeColor = "#FB923C"
+redColor = "#EF4444"
+blueColor = "#38BDF8"
+violetColor = "#A78BFA"
+grayColor = "#94A3B8"
+
+# Cores de gráfico (ouro e esmeralda na frente)
+chartCategoricalColors = ["#F2C14E", "#22C55E", "#38BDF8", "#A78BFA", "#FB7185", "#FB923C", "#94A3B8"]
+
+dataframeHeaderBackgroundColor = "#1A2238"
+
+[theme.sidebar]
+backgroundColor = "#070B16"
+secondaryBackgroundColor = "#121A2C"
+textColor = "#E7ECF6"
+borderColor = "#25304A"
+primaryColor = "#F2C14E"

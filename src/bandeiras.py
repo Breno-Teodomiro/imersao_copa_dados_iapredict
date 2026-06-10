@@ -71,3 +71,35 @@ def bandeira(nome: str) -> str:
 def com_bandeira(nome: str) -> str:
     """Nome precedido da bandeira, ex.: '🇧🇷 Brazil'."""
     return f"{bandeira(nome)} {nome}"
+
+
+# --------------------------------------------------------------------------- #
+# Bandeiras reais (imagem) via flagcdn.com — usa o mesmo ISO-2 acima.
+# --------------------------------------------------------------------------- #
+# Subdivisões do Reino Unido têm código próprio no flagcdn.
+_SUBDIV_FLAGCDN = {
+    "England": "gb-eng", "Scotland": "gb-sct", "Wales": "gb-wls", "Northern Ireland": "gb-nir",
+}
+
+# Larguras servidas pelo flagcdn (px). Escolhemos a menor >= pedida.
+_FLAGCDN_W = (20, 40, 80, 160, 320, 640, 1280)
+
+
+def codigo_flagcdn(nome: str) -> str | None:
+    """Código do flagcdn para a seleção (ex.: 'br', 'gb-eng'); None se desconhecida."""
+    if nome in _SUBDIV_FLAGCDN:
+        return _SUBDIV_FLAGCDN[nome]
+    iso = _ISO2.get(nome)
+    return iso.lower() if iso else None
+
+
+def bandeira_url(nome: str, largura: int = 80) -> str:
+    """URL da bandeira REAL (PNG) da seleção; '' se desconhecida.
+
+    Ex.: bandeira_url('Brazil', 80) -> 'https://flagcdn.com/w80/br.png'
+    """
+    cod = codigo_flagcdn(nome)
+    if not cod:
+        return ""
+    w = next((w for w in _FLAGCDN_W if w >= largura), _FLAGCDN_W[-1])
+    return f"https://flagcdn.com/w{w}/{cod}.png"

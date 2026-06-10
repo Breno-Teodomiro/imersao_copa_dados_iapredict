@@ -7,6 +7,11 @@ estima os gols esperados de cada partida (Poisson), converte em probabilidades d
 
 O resultado é o "palpite da máquina" — que, num bolão, compete contra os palpites humanos.
 
+### ▶️ App ao vivo
+
+**[copadados-insightsjobsia.streamlit.app](https://copadados-insightsjobsia.streamlit.app/)** —
+dashboard publicado no Streamlit Cloud (tema premium, bandeiras reais e simulação interativa).
+
 > Construído com **Spec-Driven Development**: cada etapa nasce de uma especificação em
 > [`.llm/`](.llm/) e produz um resultado verificável no banco. Veja o [PRD](.llm/prd.md).
 
@@ -133,6 +138,8 @@ pytest -q
 ```bash
 streamlit run app.py
 ```
+
+Ou acesse a versão publicada: **[copadados-insightsjobsia.streamlit.app](https://copadados-insightsjobsia.streamlit.app/)**.
 
 Quatro páginas:
 1. **Probabilidades pré-computadas** — as seleções com maior chance de título (gráfico + tabela).
