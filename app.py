@@ -80,6 +80,11 @@ def _modelo_campeao() -> str:
         return "—"
 
 
+@st.cache_data
+def _comparacao() -> pd.DataFrame:
+    return pd.read_sql("SELECT * FROM comparacao_modelos ORDER BY log_loss", _engine())
+
+
 # --------------------------------------------------------------------------- #
 # Páginas
 # --------------------------------------------------------------------------- #
@@ -164,7 +169,7 @@ def pagina_simulacao():
 def pagina_explorador():
     st.title("🔍 Explorador de partidas")
     st.caption("Escolha dois times e veja os gols esperados (xG) e as probabilidades de resultado.")
-    modelo_casa, modelo_visit, elos = _modelos_e_elos()
+    preditor, elos = _preditor_e_elos()
     times = sorted(elos)
 
     c1, c2 = st.columns(2)
@@ -178,8 +183,7 @@ def pagina_explorador():
         if casa == fora:
             st.warning("Escolha duas seleções diferentes.")
             return
-        p = prever_jogo(casa, fora, neutro, PESO_TORNEIO_COPA,
-                        elos=elos, modelo_casa=modelo_casa, modelo_visit=modelo_visit)
+        p = prever_jogo(casa, fora, neutro, PESO_TORNEIO_COPA, elos=elos, preditor=preditor)
         c1.metric(f"xG {com_bandeira(casa)}", round(p["gols_esperados_casa"], 2))
         c2.metric(f"xG {com_bandeira(fora)}", round(p["gols_esperados_visitante"], 2))
         st.subheader("Probabilidades de resultado")
@@ -189,6 +193,59 @@ def pagina_explorador():
         p3.metric(f"Vitória {com_bandeira(fora)}", f"{p['prob_derrota']*100:.1f}%")
 
 
+def pagina_comparacao():
+    st.title("⚖️ Comparação de modelos")
+    st.caption("Competição da feature 06 no holdout temporal (jogos de 2024 em diante). "
+               "Campeão = menor **log-loss** (qualidade da probabilidade); desempate por Brier.")
+    try:
+        df = _comparacao()
+    except Exception:
+        st.info("A tabela `comparacao_modelos` ainda não existe. Rode `python src/treino.py`.")
+        return
+    if df.empty:
+        st.info("Sem dados de comparação. Rode `python src/treino.py`.")
+        return
+
+    df = df.copy()
+    df["Modelo"] = df["modelo"].map(lambda m: NOME_MODELO.get(m, m))
+    campeao = df.loc[df["log_loss"].idxmin(), "Modelo"]
+    st.success(f"🏆 Modelo campeão: **{campeao}**")
+
+    st.subheader("log-loss por modelo (menor é melhor)")
+    grafico = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("log_loss:Q", title="log-loss"),
+            y=alt.Y("Modelo:N", sort="x", title=None),
+            color=alt.condition(alt.datum.eh_campeao, alt.value("#2e7d32"), alt.value("#90a4ae")),
+            tooltip=[alt.Tooltip("Modelo:N"), alt.Tooltip("log_loss:Q", format=".4f"),
+                     alt.Tooltip("brier:Q", format=".4f")],
+        )
+    )
+    st.altair_chart(grafico, use_container_width=True)
+
+    st.subheader("Métricas")
+    tabela = df.rename(columns={
+        "log_loss": "log-loss", "brier": "Brier", "mae_casa": "MAE casa",
+        "mae_visitante": "MAE visit.", "acuracia": "Acurácia V/E/D", "eh_campeao": "Campeão",
+    }).copy()
+    tabela["Acurácia V/E/D"] = (tabela["Acurácia V/E/D"] * 100).round(1).astype(str) + "%"
+    tabela["Campeão"] = tabela["Campeão"].map({True: "🏆", False: ""})
+    for col in ("log-loss", "Brier", "MAE casa", "MAE visit."):
+        tabela[col] = tabela[col].round(4)
+    st.dataframe(
+        tabela[["Modelo", "log-loss", "Brier", "MAE casa", "MAE visit.", "Acurácia V/E/D", "Campeão"]],
+        width="stretch", hide_index=True,
+    )
+
+    relatorio = os.path.join("docs", "modelo_campeao.md")
+    if os.path.exists(relatorio):
+        with st.expander("📄 Relatório técnico — por que este modelo venceu"):
+            with open(relatorio, encoding="utf-8") as f:
+                st.markdown(f.read())
+
+
 # --------------------------------------------------------------------------- #
 # Navegação
 # --------------------------------------------------------------------------- #
@@ -196,6 +253,7 @@ PAGINAS = {
     "Probabilidades pré-computadas": pagina_probabilidades,
     "Simulação ao vivo": pagina_simulacao,
     "Explorador de partidas": pagina_explorador,
+    "Comparação de modelos": pagina_comparacao,
 }
 
 escolha = st.sidebar.radio("Escolha a página", list(PAGINAS))

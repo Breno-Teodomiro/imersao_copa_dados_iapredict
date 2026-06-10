@@ -32,7 +32,7 @@ python src/treino.py        # 06 — treina 3 modelos, elege o campeão (ver aba
 python src/previsao.py      # 07 — previsões dos 72 jogos + experimentos de recência
 python src/monte_carlo.py   # 08 — simulação de Monte Carlo (N=10.000)
 
-streamlit run app.py        # 09 — dashboard (3 páginas)
+streamlit run app.py        # 09 — dashboard (4 páginas)
 ```
 
 Não há suíte de testes nem linter configurado. A validação de cada etapa é a **Verificação (SQL)**
