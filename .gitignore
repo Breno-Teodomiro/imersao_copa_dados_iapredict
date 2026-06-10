@@ -5,3 +5,4 @@ __pycache__/
 .mcp.json
 skills-lock.json
 .streamlit/secrets.toml
+.claude/
