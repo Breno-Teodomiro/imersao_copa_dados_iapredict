@@ -1,7 +1,7 @@
 """Spec 07 — Previsão de partida + experimentos.
 
 (1) Função ``prever_jogo`` que estima gols esperados e probabilidades V/E/D a partir do ELO
-atual das seleções, reaproveitando ``src/poisson.py``.
+atual das seleções, usando o **modelo campeão** eleito na feature_06 (interface ``Preditor``).
 (2) Experimentos que re-treinam o Poisson variando a recência e comparam o MAE no teste —
 a lição central: mais sofisticação nem sempre melhora.
 
@@ -11,16 +11,15 @@ Gera as tabelas ``previsoes`` (os 72 jogos da Copa 2026) e ``experimentos_mae``.
 from __future__ import annotations
 
 import io
-import os
-import pickle
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-import poisson
+import modelos
 from db import get_engine, get_raw_connection
-from treino import CORTE, MODELS_DIR, montar_X
+from preditor import montar_X, montar_features
+from treino import CORTE, MODELS_DIR
 
 DATA_REF = pd.Timestamp("2026-06-11")  # mesma âncora de recência da feature_03.
 PESO_TORNEIO_COPA = 3                   # FIFA World Cup = nível 3.
@@ -49,29 +48,15 @@ CREATE TABLE experimentos_mae (
 
 
 def carregar_modelos():
-    mc = sm.load(os.path.join(MODELS_DIR, "modelo_poisson_casa.pkl"))
-    mv = sm.load(os.path.join(MODELS_DIR, "modelo_poisson_visitante.pkl"))
-    with open(os.path.join(MODELS_DIR, "colunas_atributos.pkl"), "rb") as f:
-        colunas = pickle.load(f)
-    return mc, mv, colunas
+    """Carrega o ``Preditor`` do modelo campeão (definido por models/campeao.json)."""
+    return modelos.carregar_campeao(MODELS_DIR)
 
 
-def prever_jogo(time_casa, time_visitante, neutro, peso_torneio, *, elos, modelo_casa, modelo_visit):
+def prever_jogo(time_casa, time_visitante, neutro, peso_torneio, *, elos, preditor):
     """Prediz um jogo a partir do ELO atual de cada seleção (peso_recencia=1.0, jogo no presente)."""
-    elo_casa = elos[time_casa]
-    elo_visit = elos[time_visitante]
-    linha = {
-        "elo_casa": elo_casa,
-        "elo_visitante": elo_visit,
-        "dif_elo": elo_casa - elo_visit,
-        "neutro": bool(neutro),
-        "peso_torneio": peso_torneio,
-        "peso_recencia": 1.0,
-    }
-    X = montar_X(pd.DataFrame([linha]))
-    lam_casa = float(modelo_casa.predict(X)[0])
-    lam_visit = float(modelo_visit.predict(X)[0])
-    p_vit, p_emp, p_der = poisson.probabilidades_resultado(lam_casa, lam_visit)
+    feats = montar_features(elos[time_casa], elos[time_visitante], neutro, peso_torneio)
+    lam_casa, lam_visit = preditor.lambdas(feats)
+    p_vit, p_emp, p_der = preditor.probs_de_lambdas(lam_casa, lam_visit)
     return {
         "time_casa": time_casa,
         "time_visitante": time_visitante,
@@ -83,14 +68,14 @@ def prever_jogo(time_casa, time_visitante, neutro, peso_torneio, *, elos, modelo
     }
 
 
-def gerar_previsoes(modelo_casa, modelo_visit) -> pd.DataFrame:
+def gerar_previsoes(preditor) -> pd.DataFrame:
     eng = get_engine()
     elos = dict(pd.read_sql("SELECT selecao, elo FROM silver_elo_atual", eng).itertuples(index=False, name=None))
     copa = pd.read_sql("SELECT time_casa, time_visitante, neutro FROM silver_copa2026 ORDER BY data, id", eng)
 
     linhas = [
         prever_jogo(j.time_casa, j.time_visitante, j.neutro, PESO_TORNEIO_COPA,
-                    elos=elos, modelo_casa=modelo_casa, modelo_visit=modelo_visit)
+                    elos=elos, preditor=preditor)
         for j in copa.itertuples(index=False)
     ]
     return pd.DataFrame(linhas)
@@ -149,11 +134,12 @@ def gravar(previsoes: pd.DataFrame, experimentos: pd.DataFrame) -> None:
 
 
 def main() -> None:
-    print("Carregando modelos...")
-    modelo_casa, modelo_visit, _ = carregar_modelos()
+    print("Carregando modelo campeão...")
+    preditor = carregar_modelos()
+    print(f"  campeão: {preditor.nome}")
 
     print("Gerando previsões dos 72 jogos da Copa 2026...")
-    previsoes = gerar_previsoes(modelo_casa, modelo_visit)
+    previsoes = gerar_previsoes(preditor)
 
     print("Rodando experimentos (re-treino variando recência)...")
     experimentos = rodar_experimentos()

@@ -51,10 +51,10 @@ def _engine():
 
 
 @st.cache_resource
-def _modelos_e_elos():
-    modelo_casa, modelo_visit, _ = carregar_modelos()
+def _preditor_e_elos():
+    preditor = carregar_modelos()
     elos = dict(pd.read_sql("SELECT selecao, elo FROM silver_elo_atual", _engine()).itertuples(index=False, name=None))
-    return modelo_casa, modelo_visit, elos
+    return preditor, elos
 
 
 @st.cache_resource
@@ -67,13 +67,26 @@ def _probabilidades() -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM gold_probabilidades_copa ORDER BY prob_campea DESC", _engine())
 
 
+# Nome amigável do modelo campeão (feature_06), para exibir no dashboard.
+NOME_MODELO = {"poisson": "Poisson GLM", "dixon_coles": "Poisson + Dixon-Coles", "lgbm": "LightGBM (Poisson)"}
+
+
+@st.cache_data
+def _modelo_campeao() -> str:
+    try:
+        nome = pd.read_sql("SELECT modelo FROM metricas_validacao ORDER BY id DESC LIMIT 1", _engine()).iloc[0]["modelo"]
+        return NOME_MODELO.get(nome, nome)
+    except Exception:
+        return "—"
+
+
 # --------------------------------------------------------------------------- #
 # Páginas
 # --------------------------------------------------------------------------- #
 def pagina_probabilidades():
     st.title("🏆 Quem leva a taça? — Copa 2026")
     st.caption(f"As {TOP_N} seleções com maior chance de título, da maior para a menor "
-               "(1000 simulações de Monte Carlo).")
+               f"(10.000 simulações de Monte Carlo · modelo campeão: **{_modelo_campeao()}**).")
     df = _probabilidades().head(TOP_N).copy()
     df["selecao"] = df["selecao"].map(com_bandeira)
 

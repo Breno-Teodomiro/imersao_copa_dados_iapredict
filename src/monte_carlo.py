@@ -1,8 +1,9 @@
 """Spec 08 — Monte Carlo: simulação da Copa 2026.
 
-Simula o torneio N=1000 vezes (grupos → mata-mata), sorteando cada placar com a Poisson dos
-modelos treinados, e agrega a frequência de cada seleção por fase em ``gold_probabilidades_copa``.
-Uma simulação é ruído; mil viram probabilidade — o "palpite da máquina".
+Simula o torneio N=10.000 vezes (grupos → mata-mata), sorteando cada placar com o modelo
+campeão (interface ``Preditor``: Poisson/Dixon-Coles/LightGBM), e agrega a frequência de cada
+seleção por fase em ``gold_probabilidades_copa``. Uma simulação é ruído; dez mil viram
+probabilidade — o "palpite da máquina".
 """
 
 from __future__ import annotations
@@ -14,10 +15,10 @@ import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 from db import get_engine, get_raw_connection
+from preditor import montar_features
 from previsao import PESO_TORNEIO_COPA, carregar_modelos
-from treino import montar_X
 
-N_SIMULACOES = 1000
+N_SIMULACOES = 10000
 SEED = 42
 NEUTRO_MATAMATA = True
 
@@ -44,8 +45,9 @@ CREATE TABLE gold_probabilidades_copa (
 # Preparação (uma vez)
 # --------------------------------------------------------------------------- #
 def preparar():
+    """Carrega modelo campeão + seeds e devolve um sorteador de placar cacheado por confronto."""
     eng = get_engine()
-    modelo_casa, modelo_visit, _ = carregar_modelos()
+    preditor = carregar_modelos()
     elos = dict(pd.read_sql("SELECT selecao, elo FROM silver_elo_atual", eng).itertuples(index=False, name=None))
 
     grupos_df = pd.read_csv("data/grupos_copa2026.csv")
@@ -63,21 +65,17 @@ def preparar():
 
     calendario = pd.read_csv("data/calendario_copa2026.csv").to_dict("records")
 
-    cache: dict[tuple, tuple] = {}
+    cache: dict[tuple, object] = {}
 
-    def lambdas(casa, visit, neutro):
+    def sortear(casa, visit, neutro):
+        """Sorteia um placar (gc, gv). O sorteador de cada confronto é montado uma vez e cacheado."""
         chave = (casa, visit, neutro)
         if chave not in cache:
-            elo_c, elo_v = elos[casa], elos[visit]
-            linha = pd.DataFrame([{
-                "elo_casa": elo_c, "elo_visitante": elo_v, "dif_elo": elo_c - elo_v,
-                "neutro": bool(neutro), "peso_torneio": PESO_TORNEIO_COPA, "peso_recencia": 1.0,
-            }])
-            X = montar_X(linha)
-            cache[chave] = (float(modelo_casa.predict(X)[0]), float(modelo_visit.predict(X)[0]))
-        return cache[chave]
+            feats = montar_features(elos[casa], elos[visit], neutro, PESO_TORNEIO_COPA)
+            cache[chave] = preditor.amostrador(feats)
+        return cache[chave]()
 
-    return grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas
+    return grupo_de, times_do_grupo, jogos_grupo, calendario, sortear
 
 
 def slots_terceiros(calendario) -> list[str]:
@@ -89,10 +87,6 @@ def slots_terceiros(calendario) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Uma simulação
 # --------------------------------------------------------------------------- #
-def _placar(lam_casa, lam_visit):
-    return np.random.poisson(lam_casa), np.random.poisson(lam_visit)
-
-
 def _classificar_grupo(times, stats):
     """Ordena os times de um grupo: pontos → saldo → gols pró → sorteio."""
     return sorted(times, key=lambda t: (stats[t]["pts"], stats[t]["saldo"], stats[t]["gp"], np.random.random()),
@@ -106,14 +100,13 @@ NOMES_RODADA = {
 }
 
 
-def _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, lambdas):
+def _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, sortear):
     """Disputa a fase de grupos UMA vez. Devolve (stats, jogos_por_grupo, ordem_por_grupo)."""
     stats = {t: {"jogos": 0, "v": 0, "e": 0, "d": 0, "gp": 0, "gc": 0, "pts": 0} for t in grupo_de}
     jogos_por_grupo: dict[str, list] = {g: [] for g in times_do_grupo}
 
     for casa, visit, neutro in jogos_grupo:
-        lc, lv = lambdas(casa, visit, neutro)
-        gc, gv = _placar(lc, lv)
+        gc, gv = sortear(casa, visit, neutro)
         jogos_por_grupo[grupo_de[casa]].append((casa, int(gc), int(gv), visit))
         for t, marcou, sofreu in ((casa, gc, gv), (visit, gv, gc)):
             stats[t]["jogos"] += 1
@@ -160,20 +153,20 @@ def _resolver_terceiros(ordem_por_grupo, stats, slots_3) -> dict[str, str]:
     return {slots_3[j]: melhores[i][0] for i, j in zip(linhas, colunas)}
 
 
-def simular_grupos_detalhado(grupo_de, times_do_grupo, jogos_grupo, lambdas):
+def simular_grupos_detalhado(grupo_de, times_do_grupo, jogos_grupo, sortear):
     """Fase de grupos detalhada: {grupo: {"jogos": [...], "classificacao": DataFrame PT}}."""
-    stats, jogos_por_grupo, ordem = _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, lambdas)
+    stats, jogos_por_grupo, ordem = _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, sortear)
     return {g: {"jogos": jogos_por_grupo[g], "classificacao": _classificacao_df(ordem[g], stats)}
             for g in times_do_grupo}
 
 
-def simular_torneio_detalhado(grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas, slots_3):
+def simular_torneio_detalhado(grupo_de, times_do_grupo, jogos_grupo, calendario, sortear, slots_3):
     """Simula o torneio INTEIRO uma vez e devolve grupos + mata-mata por rodada + campeão.
 
     Retorna dict com: ``grupos`` (como em simular_grupos_detalhado), ``mata_mata``
     ({round: [(casa, gc, gv, visit, vencedor, penaltis)]}), ``campeao``, ``vice`` e ``terceiro``.
     """
-    stats, jogos_por_grupo, ordem = _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, lambdas)
+    stats, jogos_por_grupo, ordem = _disputar_grupos(grupo_de, times_do_grupo, jogos_grupo, sortear)
     grupos = {g: {"jogos": jogos_por_grupo[g], "classificacao": _classificacao_df(ordem[g], stats)}
               for g in times_do_grupo}
 
@@ -187,8 +180,7 @@ def simular_torneio_detalhado(grupo_de, times_do_grupo, jogos_grupo, calendario,
     for m in calendario:
         num = m["match_id"][1:]
         casa, visit = slots[m["home_slot"]], slots[m["away_slot"]]
-        lc, lv = lambdas(casa, visit, NEUTRO_MATAMATA)
-        gc, gv = _placar(lc, lv)
+        gc, gv = sortear(casa, visit, NEUTRO_MATAMATA)
         penaltis = gc == gv
         if gc > gv:
             venc, perd = casa, visit
@@ -208,13 +200,12 @@ def simular_torneio_detalhado(grupo_de, times_do_grupo, jogos_grupo, calendario,
     return {"grupos": grupos, "mata_mata": mata_mata, "campeao": campeao, "vice": vice, "terceiro": terceiro}
 
 
-def simular_torneio(grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas, slots_3):
+def simular_torneio(grupo_de, times_do_grupo, jogos_grupo, calendario, sortear, slots_3):
     stats = {t: {"pts": 0, "saldo": 0, "gp": 0} for t in grupo_de}
 
     # --- Fase de grupos ---
     for casa, visit, neutro in jogos_grupo:
-        lc, lv = lambdas(casa, visit, neutro)
-        gc, gv = _placar(lc, lv)
+        gc, gv = sortear(casa, visit, neutro)
         stats[casa]["gp"] += gc; stats[visit]["gp"] += gv
         stats[casa]["saldo"] += gc - gv; stats[visit]["saldo"] += gv - gc
         if gc > gv:
@@ -253,8 +244,7 @@ def simular_torneio(grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas, 
     for m in calendario:
         num = m["match_id"][1:]
         casa, visit = slots[m["home_slot"]], slots[m["away_slot"]]
-        lc, lv = lambdas(casa, visit, NEUTRO_MATAMATA)
-        gc, gv = _placar(lc, lv)
+        gc, gv = sortear(casa, visit, NEUTRO_MATAMATA)
         if gc > gv:
             venc, perd = casa, visit
         elif gv > gc:
@@ -293,8 +283,8 @@ def gravar(df: pd.DataFrame) -> None:
 
 def main() -> None:
     np.random.seed(SEED)
-    print("Preparando dados e modelos...")
-    grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas = preparar()
+    print("Preparando dados e modelo campeão...")
+    grupo_de, times_do_grupo, jogos_grupo, calendario, sortear = preparar()
     slots_3 = slots_terceiros(calendario)
 
     # contagem[selecao] = nº de sims em que atingiu nível >= k, para k=1..6
@@ -302,7 +292,7 @@ def main() -> None:
 
     print(f"Simulando {N_SIMULACOES} torneios...")
     for _ in range(N_SIMULACOES):
-        nivel = simular_torneio(grupo_de, times_do_grupo, jogos_grupo, calendario, lambdas, slots_3)
+        nivel = simular_torneio(grupo_de, times_do_grupo, jogos_grupo, calendario, sortear, slots_3)
         for t, nv in nivel.items():
             if nv >= 1:
                 contagem[t][:nv] += 1
