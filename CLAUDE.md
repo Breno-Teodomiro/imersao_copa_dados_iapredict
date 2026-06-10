@@ -128,9 +128,12 @@ reconstrói.
 ## Banco de dados (Supabase / Postgres)
 
 A persistência do pipeline é via **`DATABASE_URL`** (definida no `.env`): consultas/pandas pelo
-engine SQLAlchemy e **carga em massa via `COPY`** (psycopg2). **Não há `.mcp.json`** neste repo —
-se o MCP do Supabase estiver disponível na sessão, use-o apenas para inspeção/validação interativa
-(`list_tables`, `get_logs`, `get_advisors`), **não** como caminho de carga.
+engine SQLAlchemy e **carga em massa via `COPY`** (psycopg2).
+
+O **MCP do Supabase** está configurado localmente em `.mcp.json` (gitignored;
+`project_ref=iinfocxymnnyhghsmulg`) — requer autenticação via `/mcp`. Use-o para inspeção e
+**validação** interativa (`list_tables`, `get_logs`, `get_advisors`, executar a Verificação SQL de
+cada feature), **não** como caminho de carga (a carga continua via `DATABASE_URL`/`COPY`).
 
 Cada feature termina com uma **Verificação (SQL)** em `.llm/feature_NN.md` que deve ser executada
 para validar a etapa.
