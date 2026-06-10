@@ -1,0 +1,12 @@
+# Fim-de-linha normalizado: todo arquivo de texto fica em LF no repositório,
+# independente do SO (evita o "ruído" de CRLF no Windows/WSL).
+* text=auto eol=lf
+
+# Binários: nunca normalizar.
+*.pkl  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
